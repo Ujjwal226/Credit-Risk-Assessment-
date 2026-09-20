@@ -9,10 +9,11 @@ The project covers the complete ML workflow — from data preprocessing and mode
 ## 🚀 Live Demo
 
 **Live Application:**  
-https://YOUR-RENDER-URL.onrender.com
+https://credit-risk-assessment-1.onrender.com
 
 **API Documentation:**  
-https://YOUR-RENDER-URL.onrender.com/docs
+https://credit-risk-assessment-1.onrender.com/docs
+
 
 > Replace `YOUR-RENDER-URL` with your actual Render service URL.
 

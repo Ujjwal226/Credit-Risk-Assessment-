@@ -1,4 +1,3 @@
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 import joblib
@@ -9,31 +8,32 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 
-# Project directory
+# =========================================================
+# Project paths
+# =========================================================
+
 BASE_DIR = Path(__file__).resolve().parent
 
-# Model paths
 MODEL_PATH = BASE_DIR / "credit_risk_model.pkl"
 THRESHOLD_PATH = BASE_DIR / "best_threshold.pkl"
 
-# ML model storage
-ml_model = {}
+
+# =========================================================
+# Load ML model
+# =========================================================
+
+print("Loading credit risk model...")
+
+model = joblib.load(MODEL_PATH)
+threshold = float(joblib.load(THRESHOLD_PATH))
+
+print("Model loaded successfully")
+print(f"Threshold: {threshold}")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Load model and threshold when the application starts
-    ml_model["model"] = joblib.load(MODEL_PATH)
-    ml_model["threshold"] = float(joblib.load(THRESHOLD_PATH))
-
-    print("Model loaded successfully")
-    print(f"Threshold: {ml_model['threshold']}")
-
-    yield
-
-    # Clear model when application shuts down
-    ml_model.clear()
-
+# =========================================================
+# FastAPI application
+# =========================================================
 
 app = FastAPI(
     title="Credit Risk Assessment API",
@@ -41,6 +41,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+# =========================================================
+# Request schema
+# =========================================================
 
 class LoanApplication(BaseModel):
     person_age: int
@@ -56,14 +60,22 @@ class LoanApplication(BaseModel):
     cb_person_cred_hist_length: int
 
 
+# =========================================================
+# Health check
+# =========================================================
+
 @app.get("/health")
 def health():
     return {
         "status": "healthy",
-        "model_loaded": "model" in ml_model,
-        "threshold": ml_model.get("threshold"),
+        "model_loaded": model is not None,
+        "threshold": threshold,
     }
 
+
+# =========================================================
+# Prediction endpoint
+# =========================================================
 
 @app.post("/predict")
 def predict(data: LoanApplication):
@@ -71,17 +83,21 @@ def predict(data: LoanApplication):
     # Convert request data into DataFrame
     input_df = pd.DataFrame([data.model_dump()])
 
+    print("Received prediction request:")
+    print(input_df)
+
     # Get probability of default
-    probability = ml_model["model"].predict_proba(input_df)[0][1]
+    probability = model.predict_proba(input_df)[0][1]
 
     # Convert NumPy value to Python float
     probability = float(probability)
 
-    # Convert threshold to Python float
-    threshold = float(ml_model["threshold"])
-
     # Make binary prediction
     prediction = int(probability >= threshold)
+
+    print(f"Probability: {probability}")
+    print(f"Threshold: {threshold}")
+    print(f"Prediction: {prediction}")
 
     return {
         "default_probability": probability,
@@ -91,13 +107,18 @@ def predict(data: LoanApplication):
     }
 
 
-# Serve frontend
+# =========================================================
+# Frontend
+# =========================================================
+
 @app.get("/")
 def home():
-    return FileResponse(BASE_DIR / "static" / "index.html")
+    return FileResponse(
+        BASE_DIR / "static" / "index.html"
+    )
 
 
-# Serve CSS, JavaScript and other static assets
+# Serve CSS, JavaScript and other static files
 app.mount(
     "/static",
     StaticFiles(directory=BASE_DIR / "static"),

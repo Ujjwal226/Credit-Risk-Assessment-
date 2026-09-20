@@ -1,29 +1,45 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-import pandas as pd
-import joblib
 from contextlib import asynccontextmanager
-from fastapi.middleware.cors import CORSMiddleware
+from pathlib import Path
+
+import joblib
+import pandas as pd
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
+
+# Project directory
+BASE_DIR = Path(__file__).resolve().parent
+
+# Model paths
+MODEL_PATH = BASE_DIR / "credit_risk_model.pkl"
+THRESHOLD_PATH = BASE_DIR / "best_threshold.pkl"
+
+# ML model storage
 ml_model = {}
-
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    ml_model["model"] = joblib.load("credit_risk_model.pkl")
-    ml_model["threshold"] = joblib.load("best_threshold.pkl")
+    # Load model and threshold when the application starts
+    ml_model["model"] = joblib.load(MODEL_PATH)
+    ml_model["threshold"] = float(joblib.load(THRESHOLD_PATH))
 
     print("Model loaded successfully")
-    print(f"Threshold: {float(ml_model['threshold'])}")
+    print(f"Threshold: {ml_model['threshold']}")
 
     yield
 
+    # Clear model when application shuts down
     ml_model.clear()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Credit Risk Assessment API",
+    description="XGBoost-based credit default risk prediction API.",
+    version="1.0.0",
+)
 
 
 class LoanApplication(BaseModel):
@@ -38,6 +54,15 @@ class LoanApplication(BaseModel):
     loan_percent_income: float
     cb_person_default_on_file: str
     cb_person_cred_hist_length: int
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "model_loaded": "model" in ml_model,
+        "threshold": ml_model.get("threshold"),
+    }
 
 
 @app.post("/predict")
@@ -62,9 +87,19 @@ def predict(data: LoanApplication):
         "default_probability": probability,
         "default_prediction": prediction,
         "threshold": threshold,
-        "Result": "High Risk" if prediction == 1 else "Low Risk"
+        "Result": "High Risk" if prediction == 1 else "Low Risk",
     }
 
 
+# Serve frontend
+@app.get("/")
+def home():
+    return FileResponse(BASE_DIR / "static" / "index.html")
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+# Serve CSS, JavaScript and other static assets
+app.mount(
+    "/static",
+    StaticFiles(directory=BASE_DIR / "static"),
+    name="static",
+)
